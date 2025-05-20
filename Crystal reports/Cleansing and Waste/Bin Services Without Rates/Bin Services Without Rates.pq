@@ -145,10 +145,10 @@ let
         {"service_codes_list", each List.Min([Service_Code])},
         {"service_active_list", each List.Min([Is_Active])}
     }),
-    #"Added Conditional Column" = Table.AddColumn(GroupedByProperty, "service_category", each if [service_active_list] = null then "Missing service" else if [number_of_services] = 0 then "Zero service" else if [service_active_list] = "Yes" then "Has service" else if [service_active_list] = "No" then "Old Service Code" else "Unknown", Text.Type),
+    AddedServiceCategory = Table.AddColumn(GroupedByProperty, "service_category", each if [service_active_list] = null then "Missing service" else if [number_of_services] = 0 then "Zero service" else if [service_active_list] = "Yes" then "Has service" else if [service_active_list] = "No" then "Old Service Code" else "Unknown", Text.Type),
     
     // Clean up temporary columns
-    FinalTable = Table.RemoveColumns(#"Added Conditional Column", 
+    FinalTable = Table.RemoveColumns(AddedServiceCategory, 
         {"service_codes_list", "service_active_list"})
 in
     FinalTable
@@ -176,7 +176,7 @@ let
     SelectColumns = Table.SelectColumns(Source, {"Property_Key_LINK_TO_PROPERTY", "C_CALCULATION_METHOD"}),
     RenamedColumns = Table.RenameColumns(SelectColumns, {{"Property_Key_LINK_TO_PROPERTY", "Property_key"}}),
     AddedCalculationMethod = Table.AddColumn(RenamedColumns, "calculation_method", each 
-        if [C_CALCULATION_METHOD] = null then "None" else Text.Start([C_CALCULATION_METHOD], 4)),
+        if [C_CALCULATION_METHOD] = null then "None" else Text.Start([C_CALCULATION_METHOD], 4), Text.Type),
     RemovedOrigColumn = Table.RemoveColumns(AddedCalculationMethod, {"C_CALCULATION_METHOD"})
 in
     RemovedOrigColumn
