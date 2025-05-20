@@ -17,104 +17,74 @@ in
 // ParentProperties
 let
     Source = #"Property",
-    FilteredRows = Table.SelectRows(Source, each ([Parent_Property_Key] = null) and ([Status] = "C"))
+    FilteredRows = Table.SelectRows(Source, each [Parent_Property_Key] = null)
 in
     FilteredRows
 
-// PropertyServiceBase
-// PropertyServiceBase
+// BinServicesWithoutRates
+// BinServicesWithoutRates
 let
+    // Start with parent properties
     Source = #"ParentProperties",
-    JoinedChildren = Table.NestedJoin(Source, {"Property_key"}, #"ChildProperties", {"Parent_Property_Key"}, "ChildProps", JoinKind.LeftOuter),
-    ExpandedChildProps = Table.ExpandTableColumn(JoinedChildren, "ChildProps", {"Property_key", "TPKLPAPROP", "Formatted_Address", "Suburb"}, {"child_Property_key", "child_TPKLPAPROP", "child_Formatted_Address", "child_Suburb"}),
-    AddedCombinedProps = Table.AddColumn(ExpandedChildProps, "combined_Property_key", each 
-        if [child_Property_key] = null then [Property_key] else [child_Property_key],Int64.Type),
-    AddedCombinedTPKLPAPROP = Table.AddColumn(AddedCombinedProps, "combined_TPKLPAPROP", each 
-        if [child_TPKLPAPROP] = null then [TPKLPAPROP] else [child_TPKLPAPROP],Int64.Type),
-    AddedCombinedAddress = Table.AddColumn(AddedCombinedTPKLPAPROP, "combined_Formatted_Address", each 
-        if [child_Formatted_Address] = null then [Formatted_Address] else [child_Formatted_Address],Text.Type),
-    AddedCombinedSuburb = Table.AddColumn(AddedCombinedAddress, "combined_Suburb", each 
-        if [child_Suburb] = null then [Suburb] else [child_Suburb],Text.Type),
-    JoinedChildCounts = Table.NestedJoin(AddedCombinedSuburb, {"Property_key"}, #"PropertyChildCounts", {"Property_key"}, "ChildCounts", JoinKind.LeftOuter),
-    ExpandedChildCounts = Table.ExpandTableColumn(JoinedChildCounts, "ChildCounts", {"number_of_all_child_properties", "number_of_child_properties"}),
-    JoinedAssessment = Table.NestedJoin(ExpandedChildCounts, {"TPKLPAPROP"}, #"AssessmentInfo", {"TFKLPAPROP"}, "ParentAssessment", JoinKind.LeftOuter),
-    ExpandedParentAssessment = Table.ExpandTableColumn(JoinedAssessment, "ParentAssessment", {"Assessment", "Vgnumber"}, {"parent_Assessment", "parent_Vgnumber"}),
-    JoinedServices = Table.NestedJoin(ExpandedParentAssessment, {"Property_key"}, #"ServiceCategoryCalc", {"Property_key"}, "ServiceDetails", JoinKind.LeftOuter),
-    ExpandedServices = Table.ExpandTableColumn(JoinedServices, "ServiceDetails", {"number_of_services", "number_of_red_services", "service_category"}),
-    JoinedBinServices = Table.NestedJoin(ExpandedServices, {"Property_key"}, #"BinServicesInfo", {"Property_key"}, "BinServiceDetails", JoinKind.LeftOuter),
-    ExpandedBinServices = Table.ExpandTableColumn(JoinedBinServices, "BinServiceDetails", {"calculation_method"}),
-    JoinedParentRates = Table.NestedJoin(ExpandedBinServices, {"Property_key"}, #"ParentPropertyRates", {"Property_key"}, "ParentRates", JoinKind.LeftOuter),
-    ExpandedParentRates = Table.ExpandTableColumn(JoinedParentRates, "ParentRates", {"number_of_rates"}, {"parent_number_of_rates"}),
-    ReplacedNulls = Table.ReplaceValue(ExpandedParentRates, null, 0, Replacer.ReplaceValue, {"number_of_services", "number_of_red_services", "parent_number_of_rates"})
-in
-    ReplacedNulls
-
-// ChildProperties
-// ChildProperties
-let
-    Source = #"Property",
-    FilteredRows = Table.SelectRows(Source, each ([Status] = "C"))
-in
-    FilteredRows
-
-// PropertyChildCounts
-// PropertyChildCounts
-let
-    Source = #"ParentProperties",
-    // Join for all child properties counts
-    JoinAllChildCounts = Table.NestedJoin(
-        Source, {"Property_key"}, 
-        #"AllChildPropertiesCounts", {"Property_key"}, 
-        "AllChildCounts", JoinKind.LeftOuter),
-    ExpandedAllChildCounts = Table.ExpandTableColumn(
-        JoinAllChildCounts, "AllChildCounts", {"number_of_all_child_properties"}),
     
-    // Join for filtered child properties counts
-    JoinFilteredChildCounts = Table.NestedJoin(
-        ExpandedAllChildCounts, {"Property_key"}, 
-        #"FilteredChildPropertiesCounts", {"Property_key"}, 
-        "FilteredChildCounts", JoinKind.LeftOuter),
-    ExpandedFilteredChildCounts = Table.ExpandTableColumn(
-        JoinFilteredChildCounts, "FilteredChildCounts", {"number_of_child_properties"}),
+    // Join assessment info for properties
+    JoinedAssessment = Table.NestedJoin(
+        Source, {"TPKLPAPROP"}, 
+        #"AssessmentInfo", {"TFKLPAPROP"}, 
+        "AssessmentInfo", JoinKind.LeftOuter),
+    ExpandedAssessment = Table.ExpandTableColumn(
+        JoinedAssessment, "AssessmentInfo", 
+        {"Vgnumber"},{"Vgnumber"}),
     
-    // Replace nulls with zeros
+    // Join property services 
+    JoinedServices = Table.NestedJoin(
+        ExpandedAssessment, {"Property_key"}, 
+        #"PropertyServices", {"Property_key"}, 
+        "Services", JoinKind.LeftOuter),
+    ExpandedServices = Table.ExpandTableColumn(
+        JoinedServices, "Services", 
+        {"number_of_services", "number_of_red_services", "service_category"}),
+    
+    // Join bin services configuration
+    JoinedBinServices = Table.NestedJoin(
+        ExpandedServices, {"Property_key"}, 
+        #"BinServicesInfo", {"Property_key"}, 
+        "BinServices", JoinKind.LeftOuter),
+    ExpandedBinServices = Table.ExpandTableColumn(
+        JoinedBinServices, "BinServices", 
+        {"calculation_method"}),
+    
+    // Join property rates information
+    JoinedRates = Table.NestedJoin(
+        ExpandedBinServices, {"Property_key"}, 
+        #"PropertyRates", {"Property_key"}, 
+        "Rates", JoinKind.LeftOuter),
+    ExpandedRates = Table.ExpandTableColumn(
+        JoinedRates, "Rates", 
+        {"number_of_rates", "rate_units"}),
+    
+    // Join child properties data
+    JoinedChildProps = Table.NestedJoin(
+        ExpandedRates, {"Property_key"}, 
+        #"ChildRatesTotals", {"Property_key"}, 
+        "ChildRates", JoinKind.LeftOuter),
+    ExpandedChildProps = Table.ExpandTableColumn(
+        JoinedChildProps, "ChildRates", 
+        {"total_child_rates", "total_child_rate_units"}),
+    
+    // Replace nulls with zeros for numeric columns
     ReplacedNulls = Table.ReplaceValue(
-        ExpandedFilteredChildCounts, null, 0, Replacer.ReplaceValue, 
-        {"number_of_all_child_properties", "number_of_child_properties"})
-in
-    ReplacedNulls
-
-// AllChildPropertiesCounts
-// AllChildPropertiesCounts
-let
-    Source = #"ChildProperties",
-    GroupedByParent = Table.Group(Source, {"Parent_Property_Key"}, {
-        {"number_of_all_child_properties", each Table.RowCount(_)}
-    }),
-    RenamedColumn = Table.RenameColumns(GroupedByParent, {{"Parent_Property_Key", "Property_key"}})
-in
-    RenamedColumn
-
-// FilteredChildProperties
-// FilteredChildProperties
-let
-    Source = #"ChildProperties",
-    FilteredRows = Table.SelectRows(Source, each 
-        not Text.Contains([Formatted_Address], "Car Space") and 
-        not Text.Contains([Formatted_Address], "Storage"))
+        ExpandedChildProps, null, 0, Replacer.ReplaceValue, 
+        {"number_of_services", "number_of_red_services", "number_of_rates", 
+         "rate_units", "total_child_rates", "total_child_rate_units"}),
+    
+    // Final filter for properties with services but no rates
+    FilteredRows = Table.SelectRows(ReplacedNulls, each 
+        [number_of_services] > 0 and
+        [total_child_rate_units] = 0 and
+        [number_of_rates] = 0)
 in
     FilteredRows
-
-// FilteredChildPropertiesCounts
-// FilteredChildPropertiesCounts
-let
-    Source = #"FilteredChildProperties",
-    GroupedByParent = Table.Group(Source, {"Parent_Property_Key"}, {
-        {"number_of_child_properties", each Table.RowCount(_)}
-    }),
-    RenamedColumn = Table.RenameColumns(GroupedByParent, {{"Parent_Property_Key", "Property_key"}})
-in
-    RenamedColumn
 
 // Rate_Assessment
 // Rate_Assessment
@@ -140,33 +110,48 @@ let
 in
     infodbo_Property_Services_Facts
 
-// FilteredActiveServices
-// FilteredActiveServices
+// PropertyServices
+// PropertyServices
 let
     Source = #"Property_Services_Facts",
-    FilteredRows = Table.SelectRows(Source, each 
+    // Filter to active services of interest
+    FilteredActiveServices = Table.SelectRows(Source, each 
         ([Status] = "C" or [Removal_Date] > DateTime.LocalNow()) and 
         (Text.Start([Service_Code], 1) = "R" or 
          Text.Start([Service_Code], 1) = "G" or 
-         Text.Start([Service_Code], 1) = "N"))
-in
-    FilteredRows
-
-// ServiceWithCodeInfo
-// ServiceWithCodeInfo
-let
-    Source = #"FilteredActiveServices",
-    JoinedServiceCodes = Table.NestedJoin(Source, {"Service_Code"}, 
+         Text.Start([Service_Code], 1) = "N")),
+    
+    // Join service code info
+    JoinedServiceCodes = Table.NestedJoin(FilteredActiveServices, {"Service_Code"}, 
         #"Property_Service_Codes_Custom", {"Service_Code"}, 
         "ServiceCodeInfo", JoinKind.LeftOuter),
     ExpandedServiceCodes = Table.ExpandTableColumn(JoinedServiceCodes, 
-        "ServiceCodeInfo", {"Is_Active"}, {"service_Is_Active"}),
+        "ServiceCodeInfo", {"Is_Active"}, {"Is_Active"}),
+    
+    // Apply bin service specific filter  
     FilteredBinServices = Table.SelectRows(ExpandedServiceCodes, each 
         Text.Start([Service_Code], 1) = "R" or 
-        (Text.Start([Service_Code], 1) = "G" and Text.Start([service_Is_Active], 2) = "No") or 
-        Text.Start([Service_Code], 1) = "N")
+        (Text.Start([Service_Code], 1) = "G" and [Is_Active] = "No") or 
+        Text.Start([Service_Code], 1) = "N"),
+    
+    // Add dummy column for red services calculation that will fold to SQL
+    AddedRedServiceCount = Table.AddColumn(FilteredBinServices, "red_service_count", each
+        if Text.Start([Service_Code], 1) = "R" then [Number_of_Services] else 0, Int64.Type),
+        
+    // Calculate service metrics by property
+    GroupedByProperty = Table.Group(AddedRedServiceCount, {"Property_key"}, {
+        {"number_of_services", each List.Sum([Number_of_Services]), Int64.Type},
+        {"number_of_red_services", each List.Sum([red_service_count]), Int64.Type},
+        {"service_codes_list", each List.Min([Service_Code])},
+        {"service_active_list", each List.Min([Is_Active])}
+    }),
+    #"Added Conditional Column" = Table.AddColumn(GroupedByProperty, "service_category", each if [service_active_list] = null then "Missing service" else if [number_of_services] = 0 then "Zero service" else if [service_active_list] = "Yes" then "Has service" else if [service_active_list] = "No" then "Old Service Code" else "Unknown", Text.Type),
+    
+    // Clean up temporary columns
+    FinalTable = Table.RemoveColumns(#"Added Conditional Column", 
+        {"service_codes_list", "service_active_list"})
 in
-    FilteredBinServices
+    FinalTable
 
 // Property_Service_Codes_Custom
 // Property_Service_Codes_Custom
@@ -175,77 +160,6 @@ let
     infodbo_Property_Service_Codes_Custom = Source{[Schema="infodbo",Item="Property_Service_Codes_Custom"]}[Data]
 in
     infodbo_Property_Service_Codes_Custom
-
-// AllServiceCount
-// AllServiceCount
-let
-    Source = #"ServiceWithCodeInfo",
-    GroupedByProperty = Table.Group(Source, {"Property_key"}, {
-        {"number_of_services", each List.Sum([Number_of_Services])}
-    })
-in
-    GroupedByProperty
-
-// PropertyServiceDetails
-// PropertyServiceDetails
-let
-    Source = #"AllServiceCount",
-    // Join red services count
-    JoinedRedServices = Table.NestedJoin(
-        Source, {"Property_key"}, 
-        #"RedServices", {"Property_key"}, 
-        "RedServices", JoinKind.LeftOuter),
-    ExpandedRedServices = Table.ExpandTableColumn(
-        JoinedRedServices, "RedServices", {"number_of_red_services"}),
-    
-    // Join service codes for category determination later
-    JoinedServiceCodes = Table.NestedJoin(
-        ExpandedRedServices, {"Property_key"}, 
-        #"ServiceCodesByProperty", {"Property_key"}, 
-        "service_codes", JoinKind.LeftOuter),
-    
-    // Replace nulls with zeros
-    ReplacedNulls = Table.ReplaceValue(
-        JoinedServiceCodes, null, 0, Replacer.ReplaceValue, 
-        {"number_of_services", "number_of_red_services"})
-in
-    ReplacedNulls
-
-// RedServices
-// RedServices
-let
-    Source = #"FilteredActiveServices",
-    FilteredRows = Table.SelectRows(Source, each Text.Start([Service_Code], 1) = "R"),
-    GroupedByProperty = Table.Group(FilteredRows, {"Property_key"}, {
-        {"number_of_red_services", each List.Sum([Number_of_Services])}
-    })
-in
-    GroupedByProperty
-
-// ServiceCodesByProperty
-// ServiceCodesByProperty
-let
-    Source = #"ServiceWithCodeInfo",
-    SelectColumns = Table.SelectColumns(Source, {"Property_key", "Service_Code", "service_Is_Active"})
-in
-    SelectColumns
-
-// ServiceCategoryCalc
-// ServiceCategoryCalc
-let
-    Source = #"PropertyServiceDetails",
-    ExpandedServiceCodes = Table.ExpandTableColumn(Source, "service_codes", {"Service_Code", "service_Is_Active"}, {"Service_Code", "service_Is_Active"}),
-    AddedServiceCategory = Table.AddColumn(ExpandedServiceCodes, "service_category", each 
-        if [service_Is_Active] = null then "Missing Service"
-        else if [number_of_services] = 0 then "Zero Service"
-        else if [service_Is_Active] = "Yes" then "Has Service"
-        else if Text.Start([service_Is_Active], 2) = "No" then "Old Service Code"
-        else "Unknown"),
-    GroupedBack = Table.Group(AddedServiceCategory, {"Property_key", "number_of_services", "number_of_red_services"}, {
-        {"service_category", each List.Min([service_category])}
-    })
-in
-    GroupedBack
 
 // Reg_BSERV_Bin_Services
 // Reg_BSERV_Bin_Services
@@ -275,21 +189,32 @@ let
 in
     infodbo_Rate_Type_Facts
 
-// ParentPropertyRates
-// ParentPropertyRates
+// PropertyRates
+// PropertyRates
 let
     Source = #"Rate_Type_Facts",
-    JoinedRateTypes = Table.NestedJoin(Source, {"Ratetype_Key"}, CurrentRateTypes, {"Ratetype_Key"}, "RateTypeDetails", JoinKind.Inner),
-    ExpandedRateTypes = Table.ExpandTableColumn(JoinedRateTypes, "RateTypeDetails", {"IS_Current_Period", "Category_Code"}, {"IS_Current_Period", "Category_Code"}),
-    FilteredRows = Table.SelectRows(ExpandedRateTypes, each 
-        ([IS_Current_Period] = "Y") and 
-        ([Category_Code] = "DWM") and 
-        ([Suspended_Date] = null or [Suspended_Date] > DateTime.LocalNow())),
-    RenamedColumns = Table.RenameColumns(FilteredRows, {{"Units", "rate_units"}}),
-    GroupedByProperty = Table.Group(RenamedColumns, {"Property_key"}, {
-        {"number_of_rates", each Table.RowCount(_)},
-        {"rate_units", each List.Sum([rate_units])}
-    })
+    // Join rate types to get only current DWM rates
+    JoinedRateTypes = Table.NestedJoin(
+        Source, {"Ratetype_Key"}, 
+        #"CurrentRateTypes", {"Ratetype_Key"}, 
+        "RateTypeDetails", JoinKind.Inner),
+    ExpandedRateTypes = Table.ExpandTableColumn(
+        JoinedRateTypes, "RateTypeDetails", 
+        {"IS_Current_Period", "Category_Code"}),
+    
+    // Filter to active, unsuspended rates
+    FilteredRows = Table.SelectRows(
+        ExpandedRateTypes, each 
+            [IS_Current_Period] = "Y" and 
+            [Category_Code] = "DWM" and 
+            ([Suspended_Date] = null or [Suspended_Date] > DateTime.LocalNow())),
+    
+    // Group by property for rate summaries
+    GroupedByProperty = Table.Group(
+        FilteredRows, {"Property_key"}, {
+            {"number_of_rates", each Table.RowCount(_)},
+            {"rate_units", each List.Sum([Units])}
+        })
 in
     GroupedByProperty
 
@@ -311,33 +236,41 @@ let
 in
     AddedFrequency
 
-// BinServicesWithoutRates
-// BinServicesWithoutRates
+// ChildProperties
+// ChildProperties
 let
-    Source = #"PropertyServiceBase",
-    JoinedChildRateTotals = Table.NestedJoin(Source, {"Property_key"}, #"ChildRatesTotals", {"Property_key"}, "ChildRateTotals", JoinKind.LeftOuter),
-    ExpandedChildRateTotals = Table.ExpandTableColumn(JoinedChildRateTotals, "ChildRateTotals", {"total_child_rate_units", "total_child_rates"}),
-    ReplacedNulls = Table.ReplaceValue(ExpandedChildRateTotals, null, 0, Replacer.ReplaceValue, {"total_child_rate_units", "total_child_rates"}),
-    FilteredRows = Table.SelectRows(ReplacedNulls, each 
-        [number_of_services] > 0 and
-        [total_child_rate_units] = 0 and
-        [parent_number_of_rates] = 0 and
-        not Text.Contains([Formatted_Address], "Car Space") and
-        not Text.Contains([Formatted_Address], "Storage"))
+    Source = #"Property", 
+    FilteredRows = Table.SelectRows(Source, each [Parent_Property_Key] <> null)
 in
     FilteredRows
 
 // ChildRatesTotals
 // ChildRatesTotals
 let
-    Source = #"PropertyServiceBase",
-    FilteredRows = Table.SelectRows(Source, each [child_Property_key] <> null),
-    JoinedChildRates = Table.NestedJoin(FilteredRows, {"child_Property_key"}, #"ParentPropertyRates", {"Property_key"}, "ChildRates", JoinKind.LeftOuter),
-    ExpandedChildRates = Table.ExpandTableColumn(JoinedChildRates, "ChildRates", {"rate_units", "number_of_rates"}, {"child_rate_units", "child_number_of_rates"}),
-    ReplacedNulls = Table.ReplaceValue(ExpandedChildRates, null, 0, Replacer.ReplaceValue, {"child_rate_units", "child_number_of_rates"}),
-    GroupedByParent = Table.Group(ReplacedNulls, {"Property_key"}, {
-        {"total_child_rate_units", each List.Sum([child_rate_units])},
-        {"total_child_rates", each List.Sum([child_number_of_rates])}
-    })
+    Source = #"ChildProperties",
+    // Join rates for child properties
+    JoinedRates = Table.NestedJoin(
+        Source, {"Property_key"}, 
+        #"PropertyRates", {"Property_key"}, 
+        "Rates", JoinKind.LeftOuter),
+    ExpandedRates = Table.ExpandTableColumn(
+        JoinedRates, "Rates", 
+        {"rate_units", "number_of_rates"}),
+    
+    // Replace nulls with zeros
+    ReplacedNulls = Table.ReplaceValue(
+        ExpandedRates, null, 0, Replacer.ReplaceValue, 
+        {"rate_units", "number_of_rates"}),
+    
+    // Group by parent property for totals
+    GroupedByParent = Table.Group(
+        ReplacedNulls, {"Parent_Property_Key"}, {
+            {"total_child_rate_units", each List.Sum([rate_units])},
+            {"total_child_rates", each List.Sum([number_of_rates])}
+        }),
+    
+    // Rename to match join field
+    RenamedColumn = Table.RenameColumns(
+        GroupedByParent, {{"Parent_Property_Key", "Property_key"}})
 in
-    GroupedByParent
+    RenamedColumn
